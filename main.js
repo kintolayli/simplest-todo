@@ -198,6 +198,14 @@ function plural(n, one, few, many) {
     return many;
 }
 
+/** Форматирует дату как DD.MM.YYYY (не зависит от системной локали) */
+function formatDate(date) {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const y = date.getFullYear();
+    return `${d}.${m}.${y}`;
+}
+
 // ─── Основной класс плагина ────────────────────────────────────────────────
 
 module.exports = class SimplestTodo extends Plugin {
@@ -486,7 +494,7 @@ module.exports = class SimplestTodo extends Plugin {
 
         await this.ensureFolderExists(folderPath);
 
-        const today = new Date().toLocaleDateString('ru-RU');
+        const today = formatDate(new Date());
         const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 
         const cleanedTasks = tasks.map(cleanTaskForArchive);
@@ -518,7 +526,7 @@ module.exports = class SimplestTodo extends Plugin {
 
         await this.ensureFolderExists(folderPath);
 
-        const today = new Date().toLocaleDateString('ru-RU');
+        const today = formatDate(new Date());
         const resolvedLabel = label ?? this.locale.archiveMoved;
         const header = [
             this.locale.archiveTitle(monthName, year),
@@ -654,7 +662,7 @@ module.exports = class SimplestTodo extends Plugin {
         for (let i = startIndex + 1; i < endIndex; i++) {
             const line = lines[i]?.trim();
             if (line?.startsWith('- [x]')) {
-                const currentDate = new Date().toLocaleDateString('ru-RU');
+                const currentDate = formatDate(new Date());
                 // Новый формат: HTML-комментарий (не виден в Preview)
                 const archivedTask = `${line} <!-- archived:${currentDate}|section:${currentSection} -->`;
                 tasksToArchive.push(archivedTask);

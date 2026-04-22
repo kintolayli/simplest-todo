@@ -1,1 +1,11 @@
-{"id":"obsidian-simplest-todo","name":"Obsidian Simplest ToDo","version":"1.0.1","minAppVersion":"1.0.0","description":"Obsidian Simplest ToDo","author":"kintolayli","authorUrl":"","helpUrl":"","isDesktopOnly":false}
+{
+  "id": "obsidian-simplest-todo",
+  "name": "Simplest Todo",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Minimalist task manager with automatic monthly archiving. Bilingual (RU/EN).",
+  "author": "kintolayli",
+  "authorUrl": "",
+  "helpUrl": "",
+  "isDesktopOnly": false
+}

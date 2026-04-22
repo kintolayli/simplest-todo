@@ -693,7 +693,7 @@ module.exports = class SimplestTodo extends Plugin {
                 const metaMatch = line.match(/<!--\s*archived:(.*?)\|section:(.*?)\s*-->/);
                 if (metaMatch) {
                     const originalSection = metaMatch[2].trim();
-                    const cleanTask = line.replace(/<!--.*?-->/, '').replace(/^-\s*\[.\]\s*/, '- ').trim();
+                    const cleanTask = line.replace(/<!--.*?-->/, '').replace(/^-\s*\[.\]\s*/, '- [ ] ').trim();
                     tasksToUnarchive.set(cleanTask, originalSection);
                     lines[i] = null;
                 }

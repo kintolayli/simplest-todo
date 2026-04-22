@@ -354,7 +354,7 @@ module.exports = class SimplestTodo extends Plugin {
         const content = await this.app.vault.read(taskFile);
         const lines = content.split('\n');
 
-        const idxArchive = lines.findIndex(l => l?.trim() === '## Архив');
+        const idxArchive = lines.findIndex(l => l?.trim() === this.settings.archiveSectionName);
         if (idxArchive === -1) return;
 
         // Определяем границы секции ## Архив
@@ -620,11 +620,11 @@ module.exports = class SimplestTodo extends Plugin {
 
             if (tasksToArchive.length === 0 && tasksToUnarchive.size === 0) return;
 
-            lines = lines.filter(l => l !== null && l.trim() !== '');
+            lines = lines.filter(l => l !== null);
 
             // Вставляем задачи в ## Архив
             if (tasksToArchive.length > 0) {
-                const newIdxArchive = lines.findIndex(l => l.trim() === '## Архив');
+                const newIdxArchive = lines.findIndex(l => l.trim() === this.settings.archiveSectionName);
                 if (newIdxArchive !== -1) {
                     const separatorIndex = lines.findIndex(
                         (l, i) => i > newIdxArchive && l.trim() === this.settings.sectionDivider
@@ -638,7 +638,7 @@ module.exports = class SimplestTodo extends Plugin {
             // Возвращаем задачи из архива
             for (const [task, targetSection] of tasksToUnarchive) {
                 const sectionIndex = lines.findIndex(l => l.trim() === targetSection);
-                const fallback = this.settings.sectionsToProcess.at(-1) ?? '## Без срока';
+                const fallback = this.settings.sectionsToProcess.at(-1) ?? this.settings.archiveSectionName;
                 const targetIdx = sectionIndex !== -1 ? sectionIndex : lines.findIndex(l => l.trim() === fallback);
 
                 if (targetIdx !== -1) {

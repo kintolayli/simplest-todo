@@ -4,6 +4,19 @@
 
 ---
 
+## Screenshots / Скриншоты
+
+![Main Screen](asset/plugin_main_screen.png)
+*Main task list view / Основной вид списка задач*
+
+![Settings 1](asset/plugin_settings_1.png)
+*General settings / Общие настройки*
+
+![Settings 2](asset/plugin_settings_2.png)
+*Archive settings and support / Настройки архива и поддержка*
+
+---
+
 ## English
 
 A minimalist Obsidian plugin for managing tasks with automatic monthly archiving. Keep your task list clean — completed tasks move to a rolling archive automatically, organized by month into separate files.

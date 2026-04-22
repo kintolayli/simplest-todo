@@ -4,8 +4,8 @@
   "version": "1.0.1",
   "minAppVersion": "1.4.0",
   "description": "Minimalist task manager with automatic monthly archiving. Bilingual (RU/EN).",
-  "author": "kintolayli",
-  "authorUrl": "",
-  "helpUrl": "",
+  "author": "Ilya Lotnik (kintolayli)",
+  "authorUrl": "https://github.com/kintolayli",
+  "helpUrl": "https://github.com/kintolayli/simplest-todo",
   "isDesktopOnly": false
 }

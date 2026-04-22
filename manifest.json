@@ -1,7 +1,7 @@
 {
   "id": "simplest-todo",
   "name": "Simplest Todo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minAppVersion": "1.4.0",
   "description": "Minimalist task manager with automatic monthly archiving. Bilingual (RU/EN).",
   "author": "kintolayli",

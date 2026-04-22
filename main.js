@@ -1,12 +1,126 @@
 'use strict';
 const { Notice, Plugin, PluginSettingTab, Setting, MarkdownView, TFile } = require('obsidian');
 
-// ─── Константы ────────────────────────────────────────────────────────────
+// ─── Localisation ─────────────────────────────────────────────────────────
 
-const MONTHS_RU = [
-    'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
-];
+const LOCALES = {
+    ru: {
+        months: ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'],
+        ribbonTooltip:      'Архивировать выполненные задачи',
+        cmdArchive:         'Архивировать выполненные задачи',
+        cmdRollover:        'Перенести архив в месячный файл (вручную)',
+        cmdReorganize:      'Реорганизовать архив по месяцам (миграция)',
+        noticeDone:         (n) => `✅ Архивировано: ${n} ${plural(n,'задача','задачи','задач')}`,
+        noticeRestored:     (n) => `↩️ Восстановлено: ${n} ${plural(n,'задача','задачи','задач')}`,
+        noticeMoved:        (n, m) => `📦 Перенесено в архив: ${n} ${plural(n,'задача','задачи','задач')}\nФайлы: ${m}`,
+        noticeReorgDone:    (n, f, m) => `✅ Реорганизация завершена!\n${n} ${plural(n,'задача','задачи','задач')} → ${f} файлов:\n${m}`,
+        noticeReorgReading: (n) => `🔄 Читаю ${n} файлов архива...`,
+        noticeReorgEmpty:   '📂 Архивная папка пуста — нечего реорганизовывать',
+        noticeReorgNoTasks: '🔍 Задачи с распознаваемыми датами не найдены',
+        noticeFolderNotFound:(p) => `❌ Папка архива не найдена: "${p}"\nПроверьте настройки плагина.`,
+        noticeFileNotFound: '❌ Файл задач не найден! Проверьте путь в настройках.',
+        noticeNoSection:    (s) => `⚠️ Секция '${s}' не найдена в файле задач`,
+        noticeError:        '❌ Ошибка архивации. Подробности в консоли (Ctrl+Shift+I)',
+        archiveTitle:       (month, year) => `# Архив задач — ${month} ${year}`,
+        archiveMoved:       'Перенесено',
+        archiveAppended:    'Дополнено',
+        archiveReorg:       '🔀 Реорганизовано',
+        archiveReorgNoDate: '🔀 Реорганизовано (без даты)',
+        settingsTitle:      '⚙️ SimplestTodo — Настройки',
+        grpFile:            'Файл задач',
+        grpArchive:         'Месячный архив',
+        grpMigration:       'Миграция архива',
+        setLang:            'Язык интерфейса',
+        setLangDesc:        'Язык уведомлений, команд и архивных файлов',
+        setFilePath:        'Путь к файлу задач',
+        setFilePathDesc:    'Путь относительно корня хранилища',
+        setFilePathPh:      '00 - Input/000 - Задачи.md',
+        setSections:        'Обрабатываемые секции',
+        setSectionsDesc:    'Заголовки через запятую',
+        setSectionsPh:      '## Ближайшее время, ## Без срока',
+        setDivider:         'Разделитель секций',
+        setDividerDesc:     'Маркер вставки задач (по умолчанию ---)',
+        setDebounce:        'Задержка обработки (мс)',
+        setDebounceDesc:    'Дебаунс после изменения файла',
+        setAuto:            'Автоматическая архивация',
+        setAutoDesc:        'Переносить выполненные задачи в архив при изменении файла',
+        setArcSection:      'Название секции архива',
+        setArcSectionDesc:  'Заголовок секции в файле задач для выполненных задач',
+        setArcFolder:       'Папка архивных файлов',
+        setArcFolderDesc:   'Путь к папке месячных архивов',
+        setArcFolderPh:     '00 - Input/Архив',
+        setPrefix:          'Префикс имени файла',
+        setPrefixDesc:      'Префикс → "Префикс - 2026-04 - Апрель.md"',
+        setPrefixPh:        'Задачи',
+        setPreview:         (p) => `📄 Пример: ${p}`,
+        setRolloverName:    'Перенести архив прямо сейчас',
+        setRolloverDesc:    'Вручную перенести задачи из архивной секции в месячный файл',
+        setRolloverBtn:     'Перенести',
+        setArcDesc:         'По окончании месяца задачи переносятся в отдельный файл по реальной дате архивации.',
+        setMigDesc:         '⚠️ Реорганизует ВСЕ файлы в папке архива по реальным датам. Старые файлы — в корзину Obsidian (можно восстановить).',
+        setReorgName:       'Реорганизовать архив по месяцам',
+        setReorgDesc:       'Запустить один раз для исправления существующего архива',
+        setReorgBtn:        '🔀 Реорганизовать',
+    },
+    en: {
+        months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+        ribbonTooltip:      'Archive completed tasks',
+        cmdArchive:         'Archive completed tasks',
+        cmdRollover:        'Move archive to monthly file (manual)',
+        cmdReorganize:      'Reorganize archive by months (migration)',
+        noticeDone:         (n) => `✅ Archived: ${n} task${n!==1?'s':''}`,
+        noticeRestored:     (n) => `↩️ Restored: ${n} task${n!==1?'s':''}`,
+        noticeMoved:        (n, m) => `📦 Moved to archive: ${n} task${n!==1?'s':''}\nFiles: ${m}`,
+        noticeReorgDone:    (n, f, m) => `✅ Reorganization complete!\n${n} task${n!==1?'s':''} → ${f} file${f!==1?'s':''}:\n${m}`,
+        noticeReorgReading: (n) => `🔄 Reading ${n} archive file${n!==1?'s':''}...`,
+        noticeReorgEmpty:   '📂 Archive folder is empty — nothing to reorganize',
+        noticeReorgNoTasks: '🔍 No tasks with recognizable dates found',
+        noticeFolderNotFound:(p) => `❌ Archive folder not found: "${p}"\nCheck plugin settings.`,
+        noticeFileNotFound: '❌ Task file not found! Check the path in settings.',
+        noticeNoSection:    (s) => `⚠️ Section '${s}' not found in task file`,
+        noticeError:        '❌ Archive error. See console for details (Ctrl+Shift+I)',
+        archiveTitle:       (month, year) => `# Task Archive — ${month} ${year}`,
+        archiveMoved:       'Archived',
+        archiveAppended:    'Updated',
+        archiveReorg:       '🔀 Reorganized',
+        archiveReorgNoDate: '🔀 Reorganized (no date)',
+        settingsTitle:      '⚙️ SimplestTodo — Settings',
+        grpFile:            'Task file',
+        grpArchive:         'Monthly archive',
+        grpMigration:       'Archive migration',
+        setLang:            'Language',
+        setLangDesc:        'Language for notifications, commands and archive file content',
+        setFilePath:        'Task file path',
+        setFilePathDesc:    'Path relative to vault root',
+        setFilePathPh:      '00 - Input/000 - Tasks.md',
+        setSections:        'Sections to process',
+        setSectionsDesc:    'Section headers, comma-separated',
+        setSectionsPh:      '## Upcoming, ## Someday',
+        setDivider:         'Section divider',
+        setDividerDesc:     'Task insertion marker (default ---)',
+        setDebounce:        'Processing delay (ms)',
+        setDebounceDesc:    'Debounce delay after file modification',
+        setAuto:            'Auto-archive',
+        setAutoDesc:        'Automatically move completed tasks to archive on file save',
+        setArcSection:      'Archive section name',
+        setArcSectionDesc:  'Section header in the task file where completed tasks are collected',
+        setArcFolder:       'Archive folder',
+        setArcFolderDesc:   'Path to the folder where monthly archive files are saved',
+        setArcFolderPh:     '00 - Input/Archive',
+        setPrefix:          'File name prefix',
+        setPrefixDesc:      'Prefix → "Prefix - 2026-04 - April.md"',
+        setPrefixPh:        'Tasks',
+        setPreview:         (p) => `📄 Example: ${p}`,
+        setRolloverName:    'Move archive now',
+        setRolloverDesc:    'Manually move tasks from archive section to a monthly file',
+        setRolloverBtn:     'Move',
+        setArcDesc:         'At month end, tasks are exported to a file grouped by their actual archive date.',
+        setMigDesc:         '⚠️ Reorganizes ALL files in the archive folder by actual date. Old files are moved to Obsidian trash (recoverable).',
+        setReorgName:       'Reorganize archive by months',
+        setReorgDesc:       'Run once to fix an existing mixed archive',
+        setReorgBtn:        '🔀 Reorganize',
+    },
+};
 
 // ─── Вспомогательные функции ───────────────────────────────────────────────
 
@@ -18,9 +132,9 @@ function getMonthKey(date) {
 }
 
 /** Формирует имя файла месячного архива */
-function buildArchiveFileName(prefix, monthKey) {
+function buildArchiveFileName(prefix, monthKey, months) {
     const [year, month] = monthKey.split('-');
-    const monthName = MONTHS_RU[parseInt(month, 10) - 1];
+    const monthName = (months ?? LOCALES.ru.months)[parseInt(month, 10) - 1];
     const base = prefix ? `${prefix} - ` : '';
     return `${base}${year}-${month} - ${monthName}.md`;
 }
@@ -122,20 +236,20 @@ module.exports = class SimplestTodo extends Plugin {
         });
 
         // Кнопка в Ribbon
-        this.addRibbonIcon('archive', 'Архивировать выполненные задачи', async () => {
+        this.addRibbonIcon('archive', this.locale.ribbonTooltip, async () => {
             await this.runManualArchive();
         });
 
         // Команды в палитре (Ctrl+P)
         this.addCommand({
             id: 'archive-completed-tasks',
-            name: 'Архивировать выполненные задачи',
+            name: this.locale.cmdArchive,
             callback: async () => await this.runManualArchive()
         });
 
         this.addCommand({
             id: 'rollover-monthly-archive',
-            name: 'Перенести архив в месячный файл (вручную)',
+            name: this.locale.cmdRollover,
             callback: async () => {
                 const month = getMonthKey(new Date());
                 await this.rolloverArchive(month);
@@ -144,7 +258,7 @@ module.exports = class SimplestTodo extends Plugin {
 
         this.addCommand({
             id: 'reorganize-archive-folder',
-            name: 'Реорганизовать архив по месяцам (миграция)',
+            name: this.locale.cmdReorganize,
             callback: async () => await this.reorganizeArchiveFolder()
         });
 
@@ -153,7 +267,9 @@ module.exports = class SimplestTodo extends Plugin {
 
     async loadSettings() {
         this.settings = Object.assign({
+            language: 'ru',
             targetFilePath: '00 - Input/000 - Задачи.md',
+            archiveSectionName: '## Архив',
             sectionsToProcess: ['## Ближайшее время', '## Без срока'],
             sectionDivider: '---',
             autoArchive: true,
@@ -162,6 +278,11 @@ module.exports = class SimplestTodo extends Plugin {
             archiveFilePrefix: 'Задачи',
             lastArchivedMonth: ''
         }, await this.loadData());
+    }
+
+    /** Текущая локаль */
+    get locale() {
+        return LOCALES[this.settings.language] ?? LOCALES.ru;
     }
 
     async saveSettings() {
@@ -173,7 +294,7 @@ module.exports = class SimplestTodo extends Plugin {
     async runManualArchive() {
         const file = this.app.vault.getAbstractFileByPath(this.settings.targetFilePath);
         if (!file) {
-            new Notice('❌ Файл задач не найден! Проверьте путь в настройках.');
+            new Notice(this.locale.noticeFileNotFound);
             return;
         }
         await this.checkMonthRollover();
@@ -272,14 +393,10 @@ module.exports = class SimplestTodo extends Plugin {
 
         const monthList = [...tasksByMonth.keys()].map(mk => {
             const [y, m] = mk.split('-');
-            return `${MONTHS_RU[parseInt(m, 10) - 1]} ${y}`;
+            return `${this.locale.months[parseInt(m, 10) - 1]} ${y}`;
         }).join(', ');
 
-        new Notice(
-            `📦 Перенесено в архив: ${totalWritten} ${plural(totalWritten, 'задача', 'задачи', 'задач')}\n` +
-            `Файлы: ${monthList}`,
-            6000
-        );
+        new Notice(this.locale.noticeMoved(totalWritten, monthList), 6000);
     }
 
     // ─── Миграция: реорганизация архивной папки ──────────────────────────────
@@ -294,17 +411,17 @@ module.exports = class SimplestTodo extends Plugin {
         const folder = this.app.vault.getAbstractFileByPath(folderPath);
 
         if (!folder || !folder.children) {
-            new Notice(`❌ Папка архива не найдена: "${folderPath}"\nПроверьте настройки плагина.`, 6000);
+            new Notice(this.locale.noticeFolderNotFound(folderPath), 6000);
             return;
         }
 
         const mdFiles = folder.children.filter(f => f instanceof TFile && f.extension === 'md');
         if (mdFiles.length === 0) {
-            new Notice('📂 Архивная папка пуста — нечего реорганизовывать');
+            new Notice(this.locale.noticeReorgEmpty);
             return;
         }
 
-        new Notice(`🔄 Читаю ${mdFiles.length} файлов архива...`, 2000);
+        new Notice(this.locale.noticeReorgReading(mdFiles.length), 2000);
 
         // Собираем задачи из всех файлов
         const tasksByMonth = new Map();
@@ -327,7 +444,7 @@ module.exports = class SimplestTodo extends Plugin {
         }
 
         if (tasksByMonth.size === 0 && noDateTasks.length === 0) {
-            new Notice('🔍 Задачи с распознаваемыми датами не найдены');
+            new Notice(this.locale.noticeReorgNoTasks);
             return;
         }
 
@@ -339,27 +456,22 @@ module.exports = class SimplestTodo extends Plugin {
         // Создаём правильные месячные файлы (сортируем по дате)
         const sortedMonths = [...tasksByMonth.entries()].sort(([a], [b]) => a.localeCompare(b));
         for (const [monthKey, tasks] of sortedMonths) {
-            await this.writeToMonthlyArchiveFromScratch(monthKey, tasks, '🔀 Реорганизовано');
+            await this.writeToMonthlyArchiveFromScratch(monthKey, tasks, this.locale.archiveReorg);
         }
 
         // Задачи без дат — в текущий месяц
         if (noDateTasks.length > 0) {
             const currentMonth = getMonthKey(new Date());
-            await this.writeToMonthlyArchiveFromScratch(currentMonth, noDateTasks, '🔀 Реорганизовано (без даты)');
+            await this.writeToMonthlyArchiveFromScratch(currentMonth, noDateTasks, this.locale.archiveReorgNoDate);
         }
 
         const totalTasks = [...tasksByMonth.values()].reduce((s, a) => s + a.length, 0) + noDateTasks.length;
         const monthNames = sortedMonths.map(([mk]) => {
             const [y, m] = mk.split('-');
-            return `${MONTHS_RU[parseInt(m, 10) - 1]} ${y}`;
+            return `${this.locale.months[parseInt(m, 10) - 1]} ${y}`;
         });
 
-        new Notice(
-            `✅ Реорганизация завершена!\n` +
-            `${totalTasks} ${plural(totalTasks, 'задача', 'задачи', 'задач')} → ${tasksByMonth.size} файлов:\n` +
-            monthNames.join(', '),
-            8000
-        );
+        new Notice(this.locale.noticeReorgDone(totalTasks, tasksByMonth.size, monthNames.join(', ')), 8000);
     }
 
     // ─── Запись месячных файлов ───────────────────────────────────────────────
@@ -367,8 +479,8 @@ module.exports = class SimplestTodo extends Plugin {
     /** Создаёт или дополняет месячный файл архива */
     async writeToMonthlyArchive(monthKey, tasks) {
         const [year, month] = monthKey.split('-');
-        const monthName = MONTHS_RU[parseInt(month, 10) - 1];
-        const fileName = buildArchiveFileName(this.settings.archiveFilePrefix, monthKey);
+        const monthName = this.locale.months[parseInt(month, 10) - 1];
+        const fileName = buildArchiveFileName(this.settings.archiveFilePrefix, monthKey, this.locale.months);
         const folderPath = this.settings.archiveFolderPath.replace(/\/$/, '');
         const filePath = `${folderPath}/${fileName}`;
 
@@ -377,18 +489,17 @@ module.exports = class SimplestTodo extends Plugin {
         const today = new Date().toLocaleDateString('ru-RU');
         const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 
-        // Очищаем задачи: убираем чекбоксы и метаданные → простой список
         const cleanedTasks = tasks.map(cleanTaskForArchive);
 
         if (existingFile) {
             const existing = await this.app.vault.read(existingFile);
-            const separator = `\n\n> Дополнено ${today}\n\n`;
+            const separator = `\n\n> ${this.locale.archiveAppended} ${today}\n\n`;
             await this.app.vault.modify(existingFile, existing.trimEnd() + separator + cleanedTasks.join('\n') + '\n');
         } else {
             const header = [
-                `# Архив задач — ${monthName} ${year}`,
+                this.locale.archiveTitle(monthName, year),
                 '',
-                `> Перенесено: ${today}`,
+                `> ${this.locale.archiveMoved}: ${today}`,
                 '',
                 '---',
                 '',
@@ -398,20 +509,21 @@ module.exports = class SimplestTodo extends Plugin {
     }
 
     /** Создаёт месячный файл заново (для команды реорганизации) */
-    async writeToMonthlyArchiveFromScratch(monthKey, tasks, label = 'Перенесено') {
+    async writeToMonthlyArchiveFromScratch(monthKey, tasks, label) {
         const [year, month] = monthKey.split('-');
-        const monthName = MONTHS_RU[parseInt(month, 10) - 1];
-        const fileName = buildArchiveFileName(this.settings.archiveFilePrefix, monthKey);
+        const monthName = this.locale.months[parseInt(month, 10) - 1];
+        const fileName = buildArchiveFileName(this.settings.archiveFilePrefix, monthKey, this.locale.months);
         const folderPath = this.settings.archiveFolderPath.replace(/\/$/, '');
         const filePath = `${folderPath}/${fileName}`;
 
         await this.ensureFolderExists(folderPath);
 
         const today = new Date().toLocaleDateString('ru-RU');
+        const resolvedLabel = label ?? this.locale.archiveMoved;
         const header = [
-            `# Архив задач — ${monthName} ${year}`,
+            this.locale.archiveTitle(monthName, year),
             '',
-            `> ${label}: ${today}`,
+            `> ${resolvedLabel}: ${today}`,
             '',
             '---',
             '',
@@ -460,10 +572,10 @@ module.exports = class SimplestTodo extends Plugin {
             const content = await this.app.vault.read(file);
             let lines = content.split('\n');
 
-            const idxArchive = lines.findIndex(line => line?.trim() === '## Архив');
+            const idxArchive = lines.findIndex(line => line?.trim() === this.settings.archiveSectionName);
             if (idxArchive === -1) {
-                console.warn("SimplestTodo: секция '## Архив' не найдена");
-                new Notice("⚠️ Секция '## Архив' не найдена в файле задач");
+                console.warn(`SimplestTodo: секция '${this.settings.archiveSectionName}' не найдена`);
+                new Notice(this.locale.noticeNoSection(this.settings.archiveSectionName));
                 return;
             }
 
@@ -524,15 +636,15 @@ module.exports = class SimplestTodo extends Plugin {
             }
 
             if (tasksToArchive.length > 0) {
-                new Notice(`✅ Архивировано: ${tasksToArchive.length} ${plural(tasksToArchive.length, 'задача', 'задачи', 'задач')}`, 3000);
+                new Notice(this.locale.noticeDone(tasksToArchive.length), 3000);
             }
             if (tasksToUnarchive.size > 0) {
-                new Notice(`↩️ Восстановлено: ${tasksToUnarchive.size} ${plural(tasksToUnarchive.size, 'задача', 'задачи', 'задач')}`, 3000);
+                new Notice(this.locale.noticeRestored(tasksToUnarchive.size), 3000);
             }
 
         } catch (error) {
             console.error('SimplestTodo: ошибка при обработке файла:', error);
-            new Notice('❌ Ошибка архивации. Подробности в консоли (Ctrl+Shift+I)', 5000);
+            new Notice(this.locale.noticeError, 5000);
         } finally {
             this.isProcessing = false;
         }
@@ -559,7 +671,7 @@ module.exports = class SimplestTodo extends Plugin {
                 const metaMatch = line.match(/<!--\s*archived:(.*?)\|section:(.*?)\s*-->/);
                 if (metaMatch) {
                     const originalSection = metaMatch[2].trim();
-                    const cleanTask = line.replace(/<!--.*?-->/, '').trim();
+                    const cleanTask = line.replace(/<!--.*?-->/, '').replace(/^-\s*\[.\]\s*/, '- ').trim();
                     tasksToUnarchive.set(cleanTask, originalSection);
                     lines[i] = null;
                 }
@@ -586,17 +698,34 @@ class SimplestTodoSettingsTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: '⚙️ SimplestTodo — Настройки' });
+        const L = this.plugin.locale;
 
-        // ── Основной файл задач ──
+        containerEl.createEl('h2', { text: L.settingsTitle });
 
-        containerEl.createEl('h3', { text: 'Файл задач' });
+        // ── Language ──
 
         new Setting(containerEl)
-            .setName('Путь к файлу задач')
-            .setDesc('Путь относительно корня хранилища')
+            .setName(L.setLang)
+            .setDesc(L.setLangDesc)
+            .addDropdown(drop => drop
+                .addOption('ru', 'Русский')
+                .addOption('en', 'English')
+                .setValue(this.plugin.settings.language ?? 'ru')
+                .onChange(async (value) => {
+                    this.plugin.settings.language = value;
+                    await this.plugin.saveSettings();
+                    this.display();
+                }));
+
+        // ── File ──
+
+        containerEl.createEl('h3', { text: L.grpFile });
+
+        new Setting(containerEl)
+            .setName(L.setFilePath)
+            .setDesc(L.setFilePathDesc)
             .addText(text => text
-                .setPlaceholder('00 - Input/000 - Задачи.md')
+                .setPlaceholder(L.setFilePathPh)
                 .setValue(this.plugin.settings.targetFilePath)
                 .onChange(async (value) => {
                     this.plugin.settings.targetFilePath = value.trim();
@@ -604,10 +733,10 @@ class SimplestTodoSettingsTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Обрабатываемые секции')
-            .setDesc('Заголовки через запятую')
+            .setName(L.setSections)
+            .setDesc(L.setSectionsDesc)
             .addText(text => text
-                .setPlaceholder('## Ближайшее время, ## Без срока')
+                .setPlaceholder(L.setSectionsPh)
                 .setValue(this.plugin.settings.sectionsToProcess.join(', '))
                 .onChange(async (value) => {
                     this.plugin.settings.sectionsToProcess = value.split(',').map(s => s.trim()).filter(Boolean);
@@ -615,8 +744,19 @@ class SimplestTodoSettingsTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Разделитель секций')
-            .setDesc('Маркер вставки задач (по умолчанию ---)')
+            .setName(L.setArcSection)
+            .setDesc(L.setArcSectionDesc)
+            .addText(text => text
+                .setPlaceholder('## Архив')
+                .setValue(this.plugin.settings.archiveSectionName)
+                .onChange(async (value) => {
+                    this.plugin.settings.archiveSectionName = value.trim();
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName(L.setDivider)
+            .setDesc(L.setDividerDesc)
             .addText(text => text
                 .setPlaceholder('---')
                 .setValue(this.plugin.settings.sectionDivider)
@@ -626,8 +766,8 @@ class SimplestTodoSettingsTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Задержка обработки (мс)')
-            .setDesc('Дебаунс после изменения файла')
+            .setName(L.setDebounce)
+            .setDesc(L.setDebounceDesc)
             .addText(text => text
                 .setPlaceholder('500')
                 .setValue(String(this.plugin.settings.debounceMs ?? 500))
@@ -640,8 +780,8 @@ class SimplestTodoSettingsTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Автоматическая архивация')
-            .setDesc('Переносить выполненные задачи в архив при изменении файла')
+            .setName(L.setAuto)
+            .setDesc(L.setAutoDesc)
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.autoArchive)
                 .onChange(async (value) => {
@@ -649,20 +789,16 @@ class SimplestTodoSettingsTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // ── Месячный архив ──
+        // ── Archive ──
 
-        containerEl.createEl('h3', { text: 'Месячный архив' });
-
-        containerEl.createEl('p', {
-            text: 'По окончании месяца задачи переносятся в отдельный файл, сгруппированный по реальной дате архивации.',
-            cls: 'setting-item-description'
-        });
+        containerEl.createEl('h3', { text: L.grpArchive });
+        containerEl.createEl('p', { text: L.setArcDesc, cls: 'setting-item-description' });
 
         new Setting(containerEl)
-            .setName('Папка архивных файлов')
-            .setDesc('Путь к папке, куда сохраняются месячные архивы')
+            .setName(L.setArcFolder)
+            .setDesc(L.setArcFolderDesc)
             .addText(text => text
-                .setPlaceholder('00 - Input/Архив')
+                .setPlaceholder(L.setArcFolderPh)
                 .setValue(this.plugin.settings.archiveFolderPath)
                 .onChange(async (value) => {
                     this.plugin.settings.archiveFolderPath = value.trim().replace(/\/$/, '');
@@ -671,10 +807,10 @@ class SimplestTodoSettingsTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Префикс имени файла')
-            .setDesc('Префикс → "Префикс - 2026-04 - Апрель.md". Можно задать "00 - Задачи".')
+            .setName(L.setPrefix)
+            .setDesc(L.setPrefixDesc)
             .addText(text => text
-                .setPlaceholder('Задачи')
+                .setPlaceholder(L.setPrefixPh)
                 .setValue(this.plugin.settings.archiveFilePrefix)
                 .onChange(async (value) => {
                     this.plugin.settings.archiveFilePrefix = value.trim();
@@ -682,40 +818,35 @@ class SimplestTodoSettingsTab extends PluginSettingTab {
                     updatePreview();
                 }));
 
-        // Превью имени файла
         const previewEl = containerEl.createEl('div', { cls: 'setting-item-description' });
         const updatePreview = () => {
             const month = getMonthKey(new Date());
-            const name = buildArchiveFileName(this.plugin.settings.archiveFilePrefix, month);
-            previewEl.setText(`📄 Пример: ${this.plugin.settings.archiveFolderPath}/${name}`);
+            const name = buildArchiveFileName(this.plugin.settings.archiveFilePrefix, month, this.plugin.locale.months);
+            previewEl.setText(L.setPreview(`${this.plugin.settings.archiveFolderPath}/${name}`));
         };
         updatePreview();
 
         new Setting(containerEl)
-            .setName('Перенести архив прямо сейчас')
-            .setDesc('Вручную перенести задачи из ## Архив в месячный файл')
+            .setName(L.setRolloverName)
+            .setDesc(L.setRolloverDesc)
             .addButton(btn => btn
-                .setButtonText('Перенести')
+                .setButtonText(L.setRolloverBtn)
                 .setCta()
                 .onClick(async () => {
                     const month = getMonthKey(new Date());
                     await this.plugin.rolloverArchive(month);
                 }));
 
-        // ── Миграция ──
+        // ── Migration ──
 
-        containerEl.createEl('h3', { text: 'Миграция архива' });
-
-        containerEl.createEl('p', {
-            text: '⚠️ Реорганизует ВСЕ файлы в папке архива: группирует задачи по реальным датам архивации. Старые файлы перемещаются в корзину Obsidian (можно восстановить).',
-            cls: 'setting-item-description'
-        });
+        containerEl.createEl('h3', { text: L.grpMigration });
+        containerEl.createEl('p', { text: L.setMigDesc, cls: 'setting-item-description' });
 
         new Setting(containerEl)
-            .setName('Реорганизовать архив по месяцам')
-            .setDesc('Запустить один раз для исправления существующего архива')
+            .setName(L.setReorgName)
+            .setDesc(L.setReorgDesc)
             .addButton(btn => btn
-                .setButtonText('🔀 Реорганизовать')
+                .setButtonText(L.setReorgBtn)
                 .setWarning()
                 .onClick(async () => {
                     await this.plugin.reorganizeArchiveFolder();

@@ -61,6 +61,13 @@ const LOCALES = {
         setReorgName:       'Реорганизовать архив по месяцам',
         setReorgDesc:       'Запустить один раз для исправления существующего архива',
         setReorgBtn:        '🔀 Реорганизовать',
+        grpDonate:          '☕ Поддержать автора',
+        donateThanks:       'Если плагин оказался полезным — поддержите разработку донатом 🙏',
+        donateDonationAlerts: 'DonationAlerts',
+        donateBoosty:       'Boosty',
+        donateCrypto:       '💰 Криптовалюты',
+        donateSolana:       'Solana',
+        donateEth:          'ETH и Polygon',
     },
     en: {
         months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
@@ -119,6 +126,13 @@ const LOCALES = {
         setReorgName:       'Reorganize archive by months',
         setReorgDesc:       'Run once to fix an existing mixed archive',
         setReorgBtn:        '🔀 Reorganize',
+        grpDonate:          '☕ Support the author',
+        donateThanks:       'If the plugin is useful — consider supporting development 🙏',
+        donateDonationAlerts: 'DonationAlerts',
+        donateBoosty:       'Boosty',
+        donateCrypto:       '💰 Crypto',
+        donateSolana:       'Solana',
+        donateEth:          'ETH & Polygon',
     },
 };
 
@@ -859,5 +873,51 @@ class SimplestTodoSettingsTab extends PluginSettingTab {
                 .onClick(async () => {
                     await this.plugin.reorganizeArchiveFolder();
                 }));
+
+        // ── Donate ──
+
+        containerEl.createEl('h3', { text: L.grpDonate });
+        containerEl.createEl('p', { text: L.donateThanks, cls: 'setting-item-description' });
+
+        new Setting(containerEl)
+            .setName(L.donateDonationAlerts)
+            .addButton(btn => btn
+                .setButtonText('donationalerts.com')
+                .onClick(() => window.open('https://www.donationalerts.com/r/iliartmmedia', '_blank')));
+
+        new Setting(containerEl)
+            .setName(L.donateBoosty)
+            .addButton(btn => btn
+                .setButtonText('boosty.to/kintolayli')
+                .onClick(() => window.open('https://boosty.to/kintolayli/donate', '_blank')));
+
+        const cryptoEl = containerEl.createEl('div', { cls: 'setting-item' });
+        cryptoEl.createEl('div', { cls: 'setting-item-info' }).createEl('div', {
+            text: L.donateCrypto,
+            cls: 'setting-item-name'
+        });
+        const cryptoBody = cryptoEl.createEl('div', { cls: 'setting-item-control' });
+        cryptoBody.style.flexDirection = 'column';
+        cryptoBody.style.alignItems = 'flex-start';
+        cryptoBody.style.gap = '4px';
+        cryptoBody.style.fontFamily = 'monospace';
+        cryptoBody.style.fontSize = '11px';
+        cryptoBody.style.opacity = '0.75';
+
+        [
+            [L.donateSolana,  'DoZpAAobKMgz1CH6Xik3MPxKUBqyaqa6KPKoPMzytG8x'],
+            [L.donateEth,     '0x7419a7c4c1E25be74d397e2A04d835B9a941132c'],
+        ].forEach(([label, addr]) => {
+            const row = cryptoBody.createEl('div');
+            row.createEl('span', { text: `${label}: `, cls: '' });
+            const code = row.createEl('code', { text: addr });
+            code.style.cursor = 'pointer';
+            code.title = 'Click to copy';
+            code.addEventListener('click', () => {
+                navigator.clipboard.writeText(addr);
+                code.textContent = '✅ copied!';
+                setTimeout(() => { code.textContent = addr; }, 1500);
+            });
+        });
     }
 }

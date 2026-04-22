@@ -1,6 +1,6 @@
 # Obsidian Simplest Todo
 
-[English](#english) | [Русский](#русский)
+[English](#english) | [Русский](#русский) | [☕ Support / Поддержать](#support--поддержать)
 
 ---
 
@@ -205,3 +205,27 @@ MIT
 ### Лицензия
 
 MIT
+
+---
+
+## Support / Поддержать
+
+If this plugin saves you time — consider supporting its development!  
+Если плагин экономит ваше время — поддержите разработку!
+
+### 💳 Fiat / Фиат
+
+| Platform | Link |
+|----------|------|
+| DonationAlerts | [donationalerts.com/r/iliartmmedia](https://www.donationalerts.com/r/iliartmmedia) |
+| Boosty | [boosty.to/kintolayli/donate](https://boosty.to/kintolayli/donate) |
+
+### 💰 Crypto / Крипто
+
+| Network | Address |
+|---------|---------|
+| **Solana** | `DoZpAAobKMgz1CH6Xik3MPxKUBqyaqa6KPKoPMzytG8x` |
+| **ETH** | `0x7419a7c4c1E25be74d397e2A04d835B9a941132c` |
+| **Polygon** | `0x7419a7c4c1E25be74d397e2A04d835B9a941132c` |
+
+Thank you! / Спасибо! 🙏

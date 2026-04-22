@@ -78,7 +78,7 @@ Each file contains a clean bullet list with completion dates:
 
 **Manual:**
 1. Download `main.js` and `manifest.json` from the [latest release](../../releases/latest)
-2. Create: `<vault>/.obsidian/plugins/obsidian-simplest-todo/`
+2. Create: `<vault>/.obsidian/plugins/simplest-todo/`
 3. Copy both files into it
 4. **Settings → Community plugins → Reload plugins**, then enable **Simplest Todo**
 
@@ -180,7 +180,7 @@ MIT
 
 **Вручную:**
 1. Скачайте `main.js` и `manifest.json` из [последнего релиза](../../releases/latest)
-2. Создайте папку: `<хранилище>/.obsidian/plugins/obsidian-simplest-todo/`
+2. Создайте папку: `<хранилище>/.obsidian/plugins/simplest-todo/`
 3. Скопируйте оба файла в неё
 4. **Настройки → Сторонние плагины → Перезагрузить плагины**, затем включите **Simplest Todo**
 

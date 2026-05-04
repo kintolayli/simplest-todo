@@ -498,6 +498,19 @@ module.exports = class SimplestTodo extends Plugin {
 
     // ─── Запись месячных файлов ───────────────────────────────────────────────
 
+    /** Ищет файл месячного архива по ключу YYYY-MM, игнорируя локаль в названии месяца */
+    findMonthlyArchiveFile(folderPath, prefix, monthKey) {
+        const [year, month] = monthKey.split('-');
+        const dateSegment = `${year}-${month} - `;
+        const fixedPrefix = prefix ? `${prefix} - ${dateSegment}` : dateSegment;
+        const normalizedFolder = folderPath.replace(/\/$/, '');
+        const folder = this.app.vault.getAbstractFileByPath(normalizedFolder);
+        if (!folder || !folder.children) return null;
+        return folder.children.find(file =>
+            file.extension === 'md' && file.name.startsWith(fixedPrefix)
+        ) ?? null;
+    }
+
     /** Создаёт или дополняет месячный файл архива */
     async writeToMonthlyArchive(monthKey, tasks) {
         const [year, month] = monthKey.split('-');
@@ -509,7 +522,7 @@ module.exports = class SimplestTodo extends Plugin {
         await this.ensureFolderExists(folderPath);
 
         const today = formatDate(new Date());
-        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+        const existingFile = this.findMonthlyArchiveFile(folderPath, this.settings.archiveFilePrefix, monthKey);
 
         const cleanedTasks = tasks.map(cleanTaskForArchive);
 

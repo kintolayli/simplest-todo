@@ -220,6 +220,190 @@ function formatDate(date) {
     return `${d}.${m}.${y}`;
 }
 
+// ─── Разбор файла задач (чистые функции, без Obsidian API) ─────────────────
+
+/** Задача верхнего уровня, отмеченная выполненной: `- [x]` или `- [X]` */
+const DONE_TASK_RE = /^- \[[xX]\]/;
+/** Задача верхнего уровня, не выполненная: `- [ ]` */
+const OPEN_TASK_RE = /^- \[ \]/;
+/** Метаданные архивации в HTML-комментарии */
+const META_RE = /<!--\s*archived:(.*?)\|section:(.*?)\s*-->/;
+
+/** Задержка проверки смены месяца после запуска — даём синхронизации (LiveSync и т.п.) подтянуть свежий файл */
+const STARTUP_ROLLOVER_DELAY_MS = 15000;
+
+/**
+ * Возвращает индекс конца блока задачи (не включительно): сама строка задачи
+ * плюс все следующие непустые строки с отступом (продолжение текста, подзадачи).
+ * @param {string[]} lines
+ * @param {number} start индекс строки задачи
+ * @param {number} end граница секции (не включительно)
+ * @returns {number}
+ */
+function getBlockEnd(lines, start, end) {
+    let j = start + 1;
+    while (j < end && lines[j] != null && /^[ \t]+\S/.test(lines[j])) j++;
+    return j;
+}
+
+/**
+ * Находит границы секции по точному заголовку.
+ * @param {string[]} lines
+ * @param {string} heading например "## Архив"
+ * @returns {{start:number, end:number}|null} start — индекс заголовка, end — индекс следующего `## ` или длина
+ */
+function findSection(lines, heading) {
+    const start = lines.findIndex(l => l != null && l.trim() === heading);
+    if (start === -1) return null;
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+        if (lines[i] != null && lines[i].trim().startsWith('## ')) { end = i; break; }
+    }
+    return { start, end };
+}
+
+/**
+ * Индекс, куда вставлять задачи в секцию: сразу после разделителя (`---`),
+ * если он есть внутри секции. Если разделителя нет — вставляет его под заголовок.
+ * @param {string[]} lines изменяется на месте
+ * @param {string} heading
+ * @param {string} divider
+ * @returns {number} -1 если секции нет
+ */
+function getInsertIndex(lines, heading, divider) {
+    const sec = findSection(lines, heading);
+    if (!sec) return -1;
+    for (let i = sec.start + 1; i < sec.end; i++) {
+        if (lines[i].trim() === divider) return i + 1;
+    }
+    if (!divider) return sec.start + 1;
+    lines.splice(sec.start + 1, 0, divider);
+    return sec.start + 2;
+}
+
+/**
+ * Возвращает блоки задач из секции архива.
+ * @param {string[]} lines
+ * @param {string} archiveHeading
+ * @returns {{start:number, end:number, block:string[]}[]}
+ */
+function getArchiveBlocks(lines, archiveHeading) {
+    const sec = findSection(lines, archiveHeading);
+    if (!sec) return [];
+    const blocks = [];
+    for (let i = sec.start + 1; i < sec.end; i++) {
+        const t = lines[i].trim();
+        if (t.startsWith('- [x]') || t.startsWith('- [X]') || t.startsWith('- [ ]')) {
+            const j = getBlockEnd(lines, i, sec.end);
+            blocks.push({ start: i, end: j, block: lines.slice(i, j) });
+            i = j - 1;
+        }
+    }
+    return blocks;
+}
+
+/**
+ * Основное преобразование файла задач: выполненные задачи (с продолжением и подзадачами)
+ * уезжают в архив, задачи с снятой галочкой в архиве возвращаются в исходную секцию.
+ * @param {string} content
+ * @param {{archiveSectionName:string, sectionsToProcess:string[], sectionDivider:string}} settings
+ * @param {string} today DD.MM.YYYY
+ * @returns {{content:string, archived:number, restored:number, error?:string}}
+ */
+function transformTaskContent(content, settings, today) {
+    const { archiveSectionName, sectionsToProcess, sectionDivider } = settings;
+    const lines = content.split('\n');
+
+    const archiveSec = findSection(lines, archiveSectionName);
+    if (!archiveSec) return { content, archived: 0, restored: 0, error: 'noSection' };
+
+    // 1. Выполненные задачи из рабочих секций
+    const toArchive = [];
+    for (const section of sectionsToProcess) {
+        const sec = findSection(lines, section);
+        if (!sec) continue;
+        for (let i = sec.start + 1; i < sec.end; i++) {
+            if (lines[i] == null || !DONE_TASK_RE.test(lines[i])) continue;
+            const j = getBlockEnd(lines, i, sec.end);
+            const block = lines.slice(i, j);
+            block[0] = `${block[0].trimEnd()} <!-- archived:${today}|section:${section} -->`;
+            toArchive.push(block);
+            for (let k = i; k < j; k++) lines[k] = null;
+            i = j - 1;
+        }
+    }
+
+    // 2. Задачи с снятой галочкой в архиве
+    const toRestore = [];
+    for (let i = archiveSec.start + 1; i < archiveSec.end; i++) {
+        if (lines[i] == null || !OPEN_TASK_RE.test(lines[i])) continue;
+        const meta = lines[i].match(META_RE);
+        if (!meta) continue;
+        const j = getBlockEnd(lines, i, archiveSec.end);
+        const block = lines.slice(i, j);
+        block[0] = block[0].replace(/\s*<!--\s*archived:[^>]*-->/g, '').trimEnd();
+        toRestore.push({ block, section: meta[2].trim() });
+        for (let k = i; k < j; k++) lines[k] = null;
+        i = j - 1;
+    }
+
+    if (toArchive.length === 0 && toRestore.length === 0) {
+        return { content, archived: 0, restored: 0 };
+    }
+
+    const out = lines.filter(l => l !== null);
+
+    if (toArchive.length > 0) {
+        const pos = getInsertIndex(out, archiveSectionName, sectionDivider);
+        out.splice(pos, 0, ...toArchive.flat());
+    }
+
+    for (const { block, section } of toRestore) {
+        const fallback = sectionsToProcess.at(-1) ?? archiveSectionName;
+        const target = findSection(out, section) ? section : fallback;
+        const pos = getInsertIndex(out, target, sectionDivider);
+        if (pos !== -1) out.splice(pos, 0, ...block);
+    }
+
+    return { content: out.join('\n'), archived: toArchive.length, restored: toRestore.length };
+}
+
+/**
+ * Удаляет из секции архива перенесённые блоки (сравнение по точному тексту блока)
+ * и пустые строки внутри секции.
+ * @param {string} content
+ * @param {string} archiveHeading
+ * @param {Set<string>} movedKeys блоки, склеенные через '\n'
+ * @returns {string}
+ */
+function removeArchivedBlocks(content, archiveHeading, movedKeys) {
+    const lines = content.split('\n');
+    const sec = findSection(lines, archiveHeading);
+    if (!sec) return content;
+    for (const { start, end, block } of getArchiveBlocks(lines, archiveHeading)) {
+        if (movedKeys.has(block.join('\n'))) {
+            for (let k = start; k < end; k++) lines[k] = null;
+        }
+    }
+    for (let i = sec.start + 1; i < sec.end; i++) {
+        if (lines[i] !== null && lines[i].trim() === '') lines[i] = null;
+    }
+    const result = lines.filter(l => l !== null).join('\n');
+    return content.endsWith('\n') && !result.endsWith('\n') ? result + '\n' : result;
+}
+
+/**
+ * Очищает блок задачи для месячного файла: первая строка — через cleanTaskForArchive,
+ * у вложенных строк убираются чекбоксы, отступ сохраняется.
+ * @param {string[]} block
+ * @returns {string[]}
+ */
+function cleanBlockForArchive(block) {
+    return block.map((line, idx) => idx === 0
+        ? cleanTaskForArchive(line)
+        : line.replace(/^(\s*)-\s*\[.\]\s*/, '$1- '));
+}
+
 // ─── Основной класс плагина ────────────────────────────────────────────────
 
 module.exports = class SimplestTodo extends Plugin {
@@ -230,12 +414,18 @@ module.exports = class SimplestTodo extends Plugin {
         await this.loadSettings();
 
         this.isProcessing = false;
+        this.isRollingOver = false;
         this.processQueue = null;
+        this.startupTimer = null;
 
         this.app.workspace.onLayoutReady(async () => {
 
-            // Проверяем смену месяца при старте
-            await this.checkMonthRollover();
+            // Проверяем смену месяца при старте — с задержкой, чтобы синхронизация
+            // успела подтянуть свежую версию файла задач (иначе старая копия
+            // может вернуть уже перенесённые задачи и вызвать конфликт)
+            this.startupTimer = window.setTimeout(() => {
+                this.checkMonthRollover().catch(e => console.error('[SimplestTodo]', e));
+            }, STARTUP_ROLLOVER_DELAY_MS);
 
             // Слушаем изменения файла задач
             this.registerEvent(
@@ -247,7 +437,7 @@ module.exports = class SimplestTodo extends Plugin {
                         const activeFile = this.app.workspace.getActiveFile();
                         if (activeFile?.path !== this.settings.targetFilePath) return;
 
-                        const mode = this.app.workspace.activeLeaf?.view?.getMode();
+                        const mode = this.app.workspace.getActiveViewOfType(MarkdownView)?.getMode();
                         if (mode === 'preview' || mode === 'source') {
                             await this.checkMonthRollover();
                             await this.processFile(file);
@@ -326,6 +516,7 @@ module.exports = class SimplestTodo extends Plugin {
     // ─── Смена месяца ────────────────────────────────────────────────────────
 
     async checkMonthRollover() {
+        if (this.isRollingOver) return;
         const currentMonth = getMonthKey(new Date());
         const { lastArchivedMonth } = this.settings;
 
@@ -336,89 +527,73 @@ module.exports = class SimplestTodo extends Plugin {
         }
 
         if (lastArchivedMonth !== currentMonth) {
-            console.log(`SimplestTodo: rollover ${lastArchivedMonth} → ${currentMonth}`);
-            await this.rolloverArchive(lastArchivedMonth);
-            this.settings.lastArchivedMonth = currentMonth;
-            await this.saveSettings();
+            this.isRollingOver = true;
+            try {
+                console.log(`SimplestTodo: rollover ${lastArchivedMonth} → ${currentMonth}`);
+                await this.rolloverArchive(lastArchivedMonth);
+                this.settings.lastArchivedMonth = currentMonth;
+                await this.saveSettings();
+            } finally {
+                this.isRollingOver = false;
+            }
         }
     }
 
     /**
-     * Переносит задачи из ## Архив основного файла в месячные файлы.
-     * ИСПРАВЛЕНО: группирует по реальной дате архивации, а не по fromMonth.
+     * Переносит задачи из секции архива основного файла в месячные файлы.
+     * Группирует по реальной дате архивации. Идемпотентно: задачи, которые уже есть
+     * в месячном файле (например, вернулись из устаревшей копии при синхронизации),
+     * повторно не дописываются — только убираются из основного файла.
      */
     async rolloverArchive(fromMonth) {
         const taskFile = this.app.vault.getAbstractFileByPath(this.settings.targetFilePath);
-        if (!taskFile) return;
+        if (!(taskFile instanceof TFile)) return;
 
         const content = await this.app.vault.read(taskFile);
-        const lines = content.split('\n');
+        const archiveBlocks = getArchiveBlocks(content.split('\n'), this.settings.archiveSectionName);
+        if (archiveBlocks.length === 0) return;
 
-        const idxArchive = lines.findIndex(l => l?.trim() === this.settings.archiveSectionName);
-        if (idxArchive === -1) return;
-
-        // Определяем границы секции ## Архив
-        let endOfArchive = lines.length;
-        for (let i = idxArchive + 1; i < lines.length; i++) {
-            if (lines[i]?.trim().startsWith('## ')) {
-                endOfArchive = i;
-                break;
-            }
-        }
-
-        // Собираем задачи из архивной секции
-        const archiveTasks = [];
-        for (let i = idxArchive + 1; i < endOfArchive; i++) {
-            const trimmed = lines[i]?.trim();
-            if (trimmed && (trimmed.startsWith('- [x]') || trimmed.startsWith('- [ ]'))) {
-                archiveTasks.push(lines[i]);
-            }
-        }
-
-        if (archiveTasks.length === 0) return;
-
-        // ✅ ИСПРАВЛЕНО: группируем по реальной дате в метаданных задачи
+        // Группируем по реальной дате в метаданных задачи
         const tasksByMonth = new Map();
-        for (const task of archiveTasks) {
-            // extractMonthFromTask работает с обоими форматами (старый и новый)
-            const monthKey = extractMonthFromTask(task) ?? fromMonth;
+        for (const { block } of archiveBlocks) {
+            const monthKey = extractMonthFromTask(block[0]) ?? fromMonth;
             if (!tasksByMonth.has(monthKey)) tasksByMonth.set(monthKey, []);
-            tasksByMonth.get(monthKey).push(task);
+            tasksByMonth.get(monthKey).push(block);
         }
 
-        // Записываем каждую группу в соответствующий месячный файл
+        // Записываем каждую группу в свой месячный файл (без дублей)
         let totalWritten = 0;
-        for (const [monthKey, tasks] of tasksByMonth) {
-            await this.writeToMonthlyArchive(monthKey, tasks);
-            totalWritten += tasks.length;
+        const writtenMonths = [];
+        for (const [monthKey, blocks] of tasksByMonth) {
+            const n = await this.writeToMonthlyArchive(monthKey, blocks);
+            if (n > 0) writtenMonths.push(monthKey);
+            totalWritten += n;
         }
 
-        // Очищаем секцию ## Архив в основном файле
-        const newLines = [];
-        for (let i = 0; i < lines.length; i++) {
-            if (i > idxArchive && i < endOfArchive) {
-                const trimmed = lines[i]?.trim();
-                if (trimmed && (trimmed.startsWith('- [x]') || trimmed.startsWith('- [ ]'))) {
-                    continue; // удаляем задачи
-                }
-            }
-            newLines.push(lines[i]);
-        }
+        // Атомарно убираем перенесённые блоки из основного файла.
+        // Удаляем только то, что прочитали выше: задачи, архивированные за это время, остаются.
+        const movedKeys = new Set(archiveBlocks.map(({ block }) => block.join('\n')));
+        await this.app.vault.process(taskFile, data =>
+            removeArchivedBlocks(data, this.settings.archiveSectionName, movedKeys));
 
-        await this.app.vault.modify(taskFile, newLines.join('\n'));
+        this.rerenderIfPreview(taskFile);
 
-        // Обновляем вид
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (view?.file === taskFile && view.getMode() === 'preview') {
-            view.previewMode.rerender(true);
-        }
-
-        const monthList = [...tasksByMonth.keys()].map(mk => {
+        const monthList = writtenMonths.map(mk => {
             const [y, m] = mk.split('-');
             return `${this.locale.months[parseInt(m, 10) - 1]} ${y}`;
         }).join(', ');
 
-        new Notice(this.locale.noticeMoved(totalWritten, monthList), 6000);
+        if (totalWritten > 0) {
+            new Notice(this.locale.noticeMoved(totalWritten, monthList), 6000);
+        }
+    }
+
+    /** Перерисовывает режим чтения, если файл открыт в нём */
+    rerenderIfPreview(file) {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view?.file === file && view.getMode() === 'preview') {
+            view.previewMode.rerender(true);
+        }
     }
 
     // ─── Миграция: реорганизация архивной папки ──────────────────────────────
@@ -511,8 +686,14 @@ module.exports = class SimplestTodo extends Plugin {
         ) ?? null;
     }
 
-    /** Создаёт или дополняет месячный файл архива */
-    async writeToMonthlyArchive(monthKey, tasks) {
+    /**
+     * Создаёт или дополняет месячный файл архива. Задачи, уже присутствующие
+     * в файле (та же строка с той же датой), пропускаются.
+     * @param {string} monthKey YYYY-MM
+     * @param {string[][]} blocks блоки задач (первая строка — задача, далее вложенные строки)
+     * @returns {Promise<number>} сколько задач реально записано
+     */
+    async writeToMonthlyArchive(monthKey, blocks) {
         const [year, month] = monthKey.split('-');
         const monthName = this.locale.months[parseInt(month, 10) - 1];
         const fileName = buildArchiveFileName(this.settings.archiveFilePrefix, monthKey, this.locale.months);
@@ -523,24 +704,31 @@ module.exports = class SimplestTodo extends Plugin {
 
         const today = formatDate(new Date());
         const existingFile = this.findMonthlyArchiveFile(folderPath, this.settings.archiveFilePrefix, monthKey);
-
-        const cleanedTasks = tasks.map(cleanTaskForArchive);
+        const cleanedBlocks = blocks.map(cleanBlockForArchive);
 
         if (existingFile) {
-            const existing = await this.app.vault.read(existingFile);
-            const separator = `\n\n> ${this.locale.archiveAppended} ${today}\n\n`;
-            await this.app.vault.modify(existingFile, existing.trimEnd() + separator + cleanedTasks.join('\n') + '\n');
-        } else {
-            const header = [
-                this.locale.archiveTitle(monthName, year),
-                '',
-                `> ${this.locale.archiveMoved}: ${today}`,
-                '',
-                '---',
-                '',
-            ].join('\n');
-            await this.app.vault.create(filePath, header + cleanedTasks.join('\n') + '\n');
+            let written = 0;
+            await this.app.vault.process(existingFile, existing => {
+                const present = new Set(existing.split('\n').map(l => l.trim()));
+                const fresh = cleanedBlocks.filter(b => !present.has(b[0].trim()));
+                written = fresh.length;
+                if (fresh.length === 0) return existing;
+                const separator = `\n\n> ${this.locale.archiveAppended} ${today}\n\n`;
+                return existing.trimEnd() + separator + fresh.flat().join('\n') + '\n';
+            });
+            return written;
         }
+
+        const header = [
+            this.locale.archiveTitle(monthName, year),
+            '',
+            `> ${this.locale.archiveMoved}: ${today}`,
+            '',
+            '---',
+            '',
+        ].join('\n');
+        await this.app.vault.create(filePath, header + cleanedBlocks.flat().join('\n') + '\n');
+        return cleanedBlocks.length;
     }
 
     /** Создаёт месячный файл заново (для команды реорганизации) */
@@ -604,77 +792,31 @@ module.exports = class SimplestTodo extends Plugin {
         this.isProcessing = true;
 
         try {
-            const content = await this.app.vault.read(file);
-            let lines = content.split('\n');
-
-            const idxArchive = lines.findIndex(line => line?.trim() === this.settings.archiveSectionName);
-            if (idxArchive === -1) {
+            // Быстрая проверка без записи: если делать нечего — файл не трогаем,
+            // чтобы не плодить лишних изменений для синхронизации.
+            const today = formatDate(new Date());
+            const probe = transformTaskContent(await this.app.vault.read(file), this.settings, today);
+            if (probe.error === 'noSection') {
                 console.warn(`SimplestTodo: секция '${this.settings.archiveSectionName}' не найдена`);
                 new Notice(this.locale.noticeNoSection(this.settings.archiveSectionName));
                 return;
             }
+            if (probe.archived === 0 && probe.restored === 0) return;
 
-            // Собираем задачи для архивации из рабочих секций
-            const tasksToArchive = [];
-            for (const section of this.settings.sectionsToProcess) {
-                const idxSection = lines.findIndex(l => l?.trim() === section);
-                if (idxSection === -1) continue;
+            // Атомарная запись: преобразование применяется к актуальному содержимому файла
+            let result = probe;
+            await this.app.vault.process(file, data => {
+                result = transformTaskContent(data, this.settings, today);
+                return result.content;
+            });
 
-                const idxNextSection = lines.findIndex(
-                    (l, i) => i > idxSection && l?.trim().startsWith('## ')
-                );
-                const endIndex = idxNextSection === -1 ? lines.length : idxNextSection;
-                this.processSection(lines, idxSection, endIndex, tasksToArchive, section);
+            this.rerenderIfPreview(file);
+
+            if (result.archived > 0) {
+                new Notice(this.locale.noticeDone(result.archived), 3000);
             }
-
-            // Собираем задачи для возврата из архива
-            const tasksToUnarchive = new Map();
-            this.processArchiveSection(lines, idxArchive, tasksToUnarchive);
-
-            if (tasksToArchive.length === 0 && tasksToUnarchive.size === 0) return;
-
-            lines = lines.filter(l => l !== null);
-
-            // Вставляем задачи в ## Архив
-            if (tasksToArchive.length > 0) {
-                const newIdxArchive = lines.findIndex(l => l.trim() === this.settings.archiveSectionName);
-                if (newIdxArchive !== -1) {
-                    const separatorIndex = lines.findIndex(
-                        (l, i) => i > newIdxArchive && l.trim() === this.settings.sectionDivider
-                    );
-                    const insertPosition = separatorIndex !== -1 ? separatorIndex + 1 : newIdxArchive + 1;
-                    const insertContent = separatorIndex === -1 ? ['', ...tasksToArchive] : tasksToArchive;
-                    lines.splice(insertPosition, 0, ...insertContent);
-                }
-            }
-
-            // Возвращаем задачи из архива
-            for (const [task, targetSection] of tasksToUnarchive) {
-                const sectionIndex = lines.findIndex(l => l.trim() === targetSection);
-                const fallback = this.settings.sectionsToProcess.at(-1) ?? this.settings.archiveSectionName;
-                const targetIdx = sectionIndex !== -1 ? sectionIndex : lines.findIndex(l => l.trim() === fallback);
-
-                if (targetIdx !== -1) {
-                    const separatorIndex = lines.findIndex(
-                        (l, i) => i > targetIdx && l.trim() === this.settings.sectionDivider
-                    );
-                    const insertPos = separatorIndex !== -1 ? separatorIndex + 1 : targetIdx + 1;
-                    lines.splice(insertPos, 0, task);
-                }
-            }
-
-            await this.app.vault.modify(file, lines.join('\n'));
-
-            const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-            if (view?.file === file && view.getMode() === 'preview') {
-                view.previewMode.rerender(true);
-            }
-
-            if (tasksToArchive.length > 0) {
-                new Notice(this.locale.noticeDone(tasksToArchive.length), 3000);
-            }
-            if (tasksToUnarchive.size > 0) {
-                new Notice(this.locale.noticeRestored(tasksToUnarchive.size), 3000);
+            if (result.restored > 0) {
+                new Notice(this.locale.noticeRestored(result.restored), 3000);
             }
 
         } catch (error) {
@@ -685,38 +827,9 @@ module.exports = class SimplestTodo extends Plugin {
         }
     }
 
-    processSection(lines, startIndex, endIndex, tasksToArchive, currentSection) {
-        for (let i = startIndex + 1; i < endIndex; i++) {
-            const line = lines[i]?.trim();
-            if (line?.startsWith('- [x]')) {
-                const currentDate = formatDate(new Date());
-                // Новый формат: HTML-комментарий (не виден в Preview)
-                const archivedTask = `${line} <!-- archived:${currentDate}|section:${currentSection} -->`;
-                tasksToArchive.push(archivedTask);
-                lines[i] = null;
-            }
-        }
-    }
-
-    processArchiveSection(lines, archiveIndex, tasksToUnarchive) {
-        let i = archiveIndex + 1;
-        while (i < lines.length && !lines[i]?.trim().startsWith('## ')) {
-            const line = lines[i]?.trim();
-            if (line?.startsWith('- [ ]')) {
-                const metaMatch = line.match(/<!--\s*archived:(.*?)\|section:(.*?)\s*-->/);
-                if (metaMatch) {
-                    const originalSection = metaMatch[2].trim();
-                    const cleanTask = line.replace(/<!--.*?-->/, '').replace(/^-\s*\[.\]\s*/, '- [ ] ').trim();
-                    tasksToUnarchive.set(cleanTask, originalSection);
-                    lines[i] = null;
-                }
-            }
-            i++;
-        }
-    }
-
     onunload() {
         clearTimeout(this.processQueue);
+        clearTimeout(this.startupTimer);
         console.log('SimplestTodo выгружен');
     }
 };
